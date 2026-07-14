@@ -1,0 +1,90 @@
+name: Veracode Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # ---------- 1. BUILD ----------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+
+      - name: Build with Maven
+        run: mvn -B package --file app/pom.xml
+
+      - name: Upload war artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: verademo.war
+          path: app/target/verademo.war
+
+  # ---------- 2. PIPELINE SCAN (fast SAST) ----------
+  pipeline_scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get built artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: verademo.war
+
+      - name: Veracode Pipeline Scan
+        uses: veracode/Veracode-pipeline-scan-action@v1.0.20
+        with:
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          file: "verademo.war"
+          fail_build: false
+
+  # ---------- 3. UPLOAD AND SCAN (policy-tracked SAST) ----------
+  upload_and_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build with Maven
+        run: mvn -B package --file app/pom.xml
+
+      - name: Veracode Upload and Scan
+        uses: veracode/veracode-uploadandscan-action@0.2.10
+        with:
+          appname: 'verademo-1'
+          createprofile: false
+          filepath: 'app/target/verademo.war'
+          vid: '${{ secrets.VERACODE_API_ID }}'
+          vkey: '${{ secrets.VERACODE_API_KEY }}'
+
+  # ---------- 4. SCA (agent-based, scans source) ----------
+  sca_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Veracode SCA
+        id: veracode-sca
+        env:
+          SRCCLR_API_TOKEN: ${{ secrets.SRCCLR_API_TOKEN }}
+        uses: veracode/veracode-sca@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          create-issues: true
+
+      - name: Show scan URL
+        run: echo "Report: ${{ steps.veracode-sca.outputs.scan-url }}"
