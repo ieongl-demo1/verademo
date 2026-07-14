@@ -158,11 +158,12 @@ public class UserController {
 			/* START EXAMPLE VULNERABILITY */
 			// Execute the query
 			logger.info("Creating the Statement");
-			String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username='"
-					+ username + "' and password='" + md5(password) + "';";
-			sqlStatement = connect.createStatement();
+			String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username=? and password=?;";
+			PreparedStatement preparedStatement = connect.prepareStatement(sqlQuery);
+			preparedStatement.setString(1, username);
+			preparedStatement.setString(2, md5(password));
 			logger.info("Execute the Statement");
-			ResultSet result = sqlStatement.executeQuery(sqlQuery);
+			ResultSet result = preparedStatement.executeQuery();
 			/* END EXAMPLE VULNERABILITY */
 
 			// Did we find exactly 1 user that matched?
@@ -204,15 +205,7 @@ public class UserController {
 			model.addAttribute("target", target);
 
 		} finally {
-			try {
-				if (sqlStatement != null) {
-					sqlStatement.close();
-				}
-			} catch (SQLException exceptSql) {
-				logger.error(exceptSql);
-				model.addAttribute("error", exceptSql.getMessage());
-				model.addAttribute("target", target);
-			}
+
 			try {
 				if (connect != null) {
 					connect.close();
