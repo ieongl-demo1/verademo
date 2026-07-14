@@ -73,6 +73,10 @@ jobs:
   # ---------- 4. SCA (agent-based, scans source) ----------
   sca_scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
