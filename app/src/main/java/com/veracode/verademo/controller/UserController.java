@@ -52,6 +52,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
+import org.apache.commons.text.StringEscapeUtils;
 
 /**
  * @author johnadmin
@@ -147,22 +148,18 @@ public class UserController {
 		}
 
 		Connection connect = null;
-		Statement sqlStatement = null;
-
-		try {
-			// Get the Database Connection
-			logger.info("Creating the Database connection");
-			Class.forName("com.mysql.jdbc.Driver");
-			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
-
-			/* START EXAMPLE VULNERABILITY */
-			// Execute the query
-			logger.info("Creating the Statement");
-			String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username='"
-					+ username + "' and password='" + md5(password) + "';";
-			sqlStatement = connect.createStatement();
-			logger.info("Execute the Statement");
-			ResultSet result = sqlStatement.executeQuery(sqlQuery);
+PreparedStatement sqlStatement = null;
+try {
+    logger.info("Creating the Database connection");
+    Class.forName("com.mysql.jdbc.Driver");
+    connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+    logger.info("Creating the Statement");
+    String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username=? and password=?;";
+    sqlStatement = connect.prepareStatement(sqlQuery);
+    sqlStatement.setString(1, username);
+    sqlStatement.setString(2, md5(password));
+    logger.info("Execute the Statement");
+    ResultSet result = sqlStatement.executeQuery();
 			/* END EXAMPLE VULNERABILITY */
 
 			// Did we find exactly 1 user that matched?
@@ -232,31 +229,28 @@ public class UserController {
 	@RequestMapping(value = "/password-hint", method = RequestMethod.GET)
 	@ResponseBody
 	public String showPasswordHint(String username) {
-		logger.info("Entering password-hint with username: " + username);
-
-		if (username == null || username.isEmpty()) {
-			return "No username provided, please type in your username first";
-		}
-
-		try {
-			Class.forName("com.mysql.jdbc.Driver");
-
-			Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
-
-			String sql = "SELECT password_hint FROM users WHERE username = '" + username + "'";
-			logger.info(sql);
-			Statement statement = connect.createStatement();
-			ResultSet result = statement.executeQuery(sql);
+logger.info("Entering password-hint with username: " + username);
+    if (username == null || username.isEmpty()) {
+        return "No username provided, please type in your username first";
+    }
+    try {
+        Class.forName("com.mysql.jdbc.Driver");
+        Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+        String sql = "SELECT password_hint FROM users WHERE username = ?";
+        logger.info(sql);
+        PreparedStatement preparedStatement = connect.prepareStatement(sql);
+        preparedStatement.setString(1, username);
+        ResultSet result = preparedStatement.executeQuery();
 			if (result.first()) {
 				String password = result.getString("password_hint");
 				String formatString = "Username '" + username + "' has password: %.2s%s";
 				logger.info(formatString);
 				return String.format(
-						formatString,
+						Encode.forHtml(formatString),
 						password,
 						String.format("%0" + (password.length() - 2) + "d", 0).replace("0", "*"));
 			} else {
-				return "No password found for " + username;
+				return "No password found for " + StringEscapeUtils.escapeXml11(username);
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
@@ -305,9 +299,10 @@ public class UserController {
 			Class.forName("com.mysql.jdbc.Driver");
 			Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
 
-			String sql = "SELECT username FROM users WHERE username = '" + username + "'";
-			Statement statement = connect.createStatement();
-			ResultSet result = statement.executeQuery(sql);
+String sql = "SELECT username FROM users WHERE username = ?";
+PreparedStatement statement = connect.prepareStatement(sql);
+statement.setString(1, username);
+ResultSet result = statement.executeQuery();
 			if (result.first()) {
 				model.addAttribute("error", "Username '" + username + "' already exists!");
 				return "register";
@@ -349,29 +344,22 @@ public class UserController {
 		}
 
 		Connection connect = null;
-		Statement sqlStatement = null;
-
-		try {
-			// Get the Database Connection
-			logger.info("Creating the Database connection");
-			Class.forName("com.mysql.jdbc.Driver");
-			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
-
-			/* START EXAMPLE VULNERABILITY */
-			// Execute the query
-			String mysqlCurrentDateTime = (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"))
-					.format(Calendar.getInstance().getTime());
-			StringBuilder query = new StringBuilder();
-			query.append("insert into users (username, password, created_at, real_name, blab_name) values(");
-			query.append("'" + username + "',");
-			query.append("'" + md5(password) + "',");
-			query.append("'" + mysqlCurrentDateTime + "',");
-			query.append("'" + realName + "',");
-			query.append("'" + blabName + "'");
-			query.append(");");
-
-			sqlStatement = connect.createStatement();
-			sqlStatement.execute(query.toString());
+PreparedStatement sqlStatement = null;
+try {
+    logger.info("Creating the Database connection");
+    Class.forName("com.mysql.jdbc.Driver");
+    connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+    String mysqlCurrentDateTime = (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"))
+    .format(Calendar.getInstance().getTime());
+    String query = "insert into users (username, password, created_at, real_name, blab_name) values(?, ?, ?, ?, ?)";
+    sqlStatement = connect.prepareStatement(query);
+    sqlStatement.setString(1, username);
+    sqlStatement.setString(2, md5(password));
+    sqlStatement.setString(3, mysqlCurrentDateTime);
+    sqlStatement.setString(4, realName);
+    sqlStatement.setString(5, blabName);
+    sqlStatement.execute();
+    logger.info(query);
 			logger.info(query.toString());
 			/* END EXAMPLE VULNERABILITY */
 
@@ -472,11 +460,11 @@ public class UserController {
 			ArrayList<String> events = new ArrayList<String>();
 
 			/* START EXAMPLE VULNERABILITY */
-			String sqlMyEvents = "select event from users_history where blabber=\"" + username
-					+ "\" ORDER BY eventid DESC; ";
-			logger.info(sqlMyEvents);
-			Statement sqlStatement = connect.createStatement();
-			ResultSet userHistoryResult = sqlStatement.executeQuery(sqlMyEvents);
+String sqlMyEvents = "select event from users_history where blabber=? ORDER BY eventid DESC; ";
+logger.info(sqlMyEvents);
+PreparedStatement preparedStatement = connect.prepareStatement(sqlMyEvents);
+preparedStatement.setString(1, username);
+ResultSet userHistoryResult = preparedStatement.executeQuery();
 			/* END EXAMPLE VULNERABILITY */
 
 			while (userHistoryResult.next()) {
@@ -484,10 +472,11 @@ public class UserController {
 			}
 
 			// Get the users information
-			String sql = "SELECT username, real_name, blab_name FROM users WHERE username = '" + username + "'";
-			logger.info(sql);
-			myInfo = connect.prepareStatement(sql);
-			ResultSet myInfoResults = myInfo.executeQuery();
+String sql = "SELECT username, real_name, blab_name FROM users WHERE username = ?";
+logger.info(sql);
+myInfo = connect.prepareStatement(sql);
+myInfo.setString(1, username);
+ResultSet myInfoResults = myInfo.executeQuery();
 			myInfoResults.next();
 
 			// Send these values to our View
